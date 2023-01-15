@@ -86,6 +86,7 @@ def parse_whl_library_args(args: argparse.Namespace) -> Dict[str, Any]:
         "requirements_lock_label",
         "annotations",
         "bzlmod",
+        "patches",
     ):
         if arg in whl_library_args:
             whl_library_args.pop(arg)
@@ -100,6 +101,7 @@ def generate_parsed_requirements_contents(
     whl_library_args: Dict[str, Any],
     annotations: Dict[str, str] = dict(),
     bzlmod: bool = False,
+    patches: Dict[str, str] = dict(),
 ) -> str:
     """
     Parse each requirement from the requirements_lock file, and prepare arguments for each
@@ -137,6 +139,7 @@ def generate_parsed_requirements_contents(
                     name = name,
                     requirement = requirement,
                     annotation = _get_annotation(requirement),
+                    patches = _get_patches(requirement),
                     **whl_config
                 )
 """
@@ -154,6 +157,7 @@ def generate_parsed_requirements_contents(
         _config = {args}
         _annotations = {annotations}
         _bzlmod = {bzlmod}
+        _patches = {patches}
 
         def _clean_name(name):
             return name.replace("-", "_").replace(".", "_").lower()
@@ -188,6 +192,10 @@ def generate_parsed_requirements_contents(
             # down wo `setuptools`.
             name = requirement.split(" ")[0].split("=")[0].split("[")[0]
             return _annotations.get(name)
+
+        def _get_patches(requirement):
+            name = requirement.split(" ")[0].split("=")[0]
+            return _patches.get(name)
 """
             + (install_deps_macro if not bzlmod else "")
         ).format(
@@ -198,6 +206,7 @@ def generate_parsed_requirements_contents(
             data_label=bazel.DATA_LABEL,
             dist_info_label=bazel.DIST_INFO_LABEL,
             entry_point_prefix=bazel.WHEEL_ENTRY_POINT_PREFIX,
+            patches=json.dumps(patches),
             py_library_label=bazel.PY_LIBRARY_LABEL,
             repo_names_and_reqs=repo_names_and_reqs,
             repo=repo,
@@ -266,6 +275,14 @@ If set, it will take precedence over python_interpreter.",
         default=False,
         help="Whether this script is run under bzlmod. Under bzlmod we don't generate the install_deps() macro as it isn't needed.",
     )
+    parser.add_argument(
+        "--patches",
+        type=str,
+    )
+    parser.add_argument(
+        "--py_environment",
+        type=str,
+    )
     arguments.parse_common_args(parser)
     args = parser.parse_args()
 
@@ -305,6 +322,11 @@ If set, it will take precedence over python_interpreter.",
         )
     )
 
+    patches = {}
+    if args.patches:
+        with open(args.patches) as patches_file:
+            patches = json.load(patches_file)
+
     output.write(
         generate_parsed_requirements_contents(
             requirements_lock=args.requirements_lock,
@@ -313,6 +335,7 @@ If set, it will take precedence over python_interpreter.",
             whl_library_args=whl_library_args,
             annotations=annotated_requirements,
             bzlmod=args.bzlmod,
+            patches=patches,
         )
     )
 

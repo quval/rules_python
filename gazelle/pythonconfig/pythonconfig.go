@@ -198,18 +198,11 @@ func (c *Config) FindThirdPartyDependency(modName string) (string, bool) {
 		if currentCfg.gazelleManifest != nil {
 			gazelleManifest := currentCfg.gazelleManifest
 			if distributionName, ok := gazelleManifest.ModulesMapping[modName]; ok {
-				var distributionRepositoryName string
-				if gazelleManifest.PipDepsRepositoryName != "" {
-					distributionRepositoryName = gazelleManifest.PipDepsRepositoryName
-				} else if gazelleManifest.PipRepository != nil {
-					distributionRepositoryName = gazelleManifest.PipRepository.Name
-				}
 				sanitizedDistribution := strings.ToLower(distributionName)
 				sanitizedDistribution = strings.ReplaceAll(sanitizedDistribution, "-", "_")
 				var lbl label.Label
 				// @<repository_name>_<distribution_name>//:pkg
-				distributionRepositoryName = distributionRepositoryName + "_" + sanitizedDistribution
-				lbl = label.New(distributionRepositoryName, "", "pkg")
+				lbl = label.New("", "third_party/pip", sanitizedDistribution)
 				return lbl.String(), true
 			}
 		}

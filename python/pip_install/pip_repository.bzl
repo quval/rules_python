@@ -298,10 +298,25 @@ alias(
 def _pip_repository_impl(rctx):
     python_interpreter = _resolve_python_interpreter(rctx)
 
+    patches = {string: label for (label, string) in rctx.attr.patches.items()}
+
     # Write the annotations file to pass to the wheel maker
     annotations = {package: json.decode(data) for (package, data) in rctx.attr.annotations.items()}
+    patches_for_package = {}
+    for package in annotations:
+        if annotations[package]["patches"]:
+            patches_for_package[package] = [
+                ("" if patch.startswith("@") else "@") + str(patches[patch])
+                for patch in annotations[package]["patches"]
+            ]
+            annotations[package]["patches"] = [
+                str(rctx.path(patches[patch]))
+                for patch in annotations[package]["patches"]
+            ]
     annotations_file = rctx.path("annotations.json")
     rctx.file(annotations_file, json.encode_indent(annotations, indent = " " * 4))
+    patches_file = rctx.path("patches.json")
+    rctx.file(patches_file, json.encode_indent(patches_for_package, indent = " " * 4))
 
     requirements_txt = locked_requirements_label(rctx, rctx.attr)
     args = [
@@ -321,6 +336,10 @@ def _pip_repository_impl(rctx):
         annotations_file,
         "--bzlmod",
         str(rctx.attr.bzlmod).lower(),
+        "--patches",
+        patches_file,
+        "--py_environment",
+        rctx.attr.py_environment,
     ]
 
     args += ["--python_interpreter", _get_python_interpreter_attr(rctx)]
@@ -366,6 +385,7 @@ Whether to use "pip download" instead of "pip wheel". Disables building wheels f
 platform from the host platform.
         """,
     ),
+    "py_environment": attr.string(default = "{}"),
     "enable_implicit_namespace_pkgs": attr.bool(
         default = False,
         doc = """
@@ -449,6 +469,7 @@ pip_repository_attrs = {
 we do not create the install_deps() macro.
 """,
     ),
+    "patches": attr.label_keyed_string_dict(allow_files = True),
     "requirements_darwin": attr.label(
         allow_single_file = True,
         doc = "Override the requirements_lock attribute when the host platform is Mac OS",
@@ -531,6 +552,8 @@ def _whl_library_impl(rctx):
         rctx.attr.repo,
         "--repo-prefix",
         rctx.attr.repo_prefix,
+        "--py_environment",
+        rctx.attr.py_environment,
     ]
     if rctx.attr.annotation:
         args.extend([
@@ -561,6 +584,7 @@ whl_library_attrs = {
         ),
         allow_files = True,
     ),
+    "patches": attr.label_list(allow_files = True),
     "repo": attr.string(
         mandatory = True,
         doc = "Pointer to parent repo name. Used to make these rules rerun if the parent repo changes.",
@@ -588,6 +612,7 @@ def package_annotation(
         copy_executables = {},
         data = [],
         data_exclude_glob = [],
+        patches = [],
         srcs_exclude_glob = []):
     """Annotations to apply to the BUILD file content from package generated from a `pip_repository` rule.
 
@@ -602,6 +627,7 @@ def package_annotation(
         data (list, optional): A list of labels to add as `data` dependencies to the generated `py_library` target.
         data_exclude_glob (list, optional): A list of exclude glob patterns to add as `data` to the generated
             `py_library` target.
+        patches (list, optional): A list of labels to apply as patches to the extracted wheel.
         srcs_exclude_glob (list, optional): A list of labels to add as `srcs` to the generated `py_library` target.
 
     Returns:
@@ -613,5 +639,6 @@ def package_annotation(
         copy_executables = copy_executables,
         data = data,
         data_exclude_glob = data_exclude_glob,
+        patches = patches,
         srcs_exclude_glob = srcs_exclude_glob,
     ))

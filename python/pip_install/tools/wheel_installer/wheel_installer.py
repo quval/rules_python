@@ -291,7 +291,8 @@ def _extract_wheel(
     repo_prefix: str,
     incremental_dir: Path = Path("."),
     annotation: Optional[annotation.Annotation] = None,
-) -> None:
+    environment: Optional[Dict[str, str]] = None,
+) -> Optional[str]:
     """Extracts wheel into given directory and creates py_library and filegroup targets.
 
     Args:
@@ -301,6 +302,7 @@ def _extract_wheel(
         enable_implicit_namespace_pkgs: if true, disables conversion of implicit namespace packages and will unzip as-is
         incremental_dir: An optional override for the working directory of incremental builds.
         annotation: An optional set of annotations to apply to the BUILD contents of the wheel.
+        environment: An optional environment specification for deducing requirements.
 
     Returns:
         The Bazel label for the extracted wheel, in the form '//path/to/wheel'.
@@ -317,7 +319,7 @@ def _extract_wheel(
     # Packages may create dependency cycles when specifying optional-dependencies / 'extras'.
     # Example: github.com/google/etils/blob/a0b71032095db14acf6b33516bca6d885fe09e35/pyproject.toml#L32.
     self_edge_dep = set([whl.name])
-    whl_deps = sorted(whl.dependencies(extras_requested) - self_edge_dep)
+    whl_deps = sorted(whl.dependencies(extras_requested, environment=environment) - self_edge_dep)
 
     sanitised_dependencies = [
         bazel.sanitised_repo_library_label(d, repo_prefix=repo_prefix) for d in whl_deps
@@ -346,6 +348,14 @@ def _extract_wheel(
                 bazel.PY_LIBRARY_LABEL,
             )
         )
+
+    if annotation and annotation.patches:
+        for patch in annotation.patches:
+            subprocess.run(
+                ['patch', '-p', '1', '-i', patch],
+                cwd=directory,
+                check=True,
+            )
 
     with open(os.path.join(directory, "BUILD.bazel"), "w") as build_file:
         additional_content = entry_points
@@ -395,6 +405,10 @@ def main() -> None:
         type=annotation.annotation_from_str_path,
         help="A json encoded file containing annotations for rendered packages.",
     )
+    parser.add_argument(
+        "--py_environment",
+        type=json.loads,
+    )
     arguments.parse_common_args(parser)
     args = parser.parse_args()
     deserialized_args = dict(vars(args))
@@ -442,6 +456,7 @@ def main() -> None:
         enable_implicit_namespace_pkgs=args.enable_implicit_namespace_pkgs,
         repo_prefix=args.repo_prefix,
         annotation=args.annotation,
+        environment=args.py_environment,
     )
 
 
