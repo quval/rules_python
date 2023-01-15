@@ -56,14 +56,14 @@ class Wheel:
 
             return entry_points_mapping
 
-    def dependencies(self, extras_requested: Optional[Set[str]] = None) -> Set[str]:
+    def dependencies(self, extras_requested: Optional[Set[str]] = None, environment: Optional[Dict[str, str]] = None) -> Set[str]:
         dependency_set = set()
 
         for wheel_req in self.metadata.get_all("Requires-Dist", []):
             req = pkg_resources.Requirement(wheel_req)  # type: ignore
-
+            with open("/tmp/foo.txt", "a") as f: f.write(wheel_req)
             if req.marker is None or any(
-                req.marker.evaluate({"extra": extra})
+                req.marker.evaluate({**environment, **{"extra": extra}})
                 for extra in extras_requested or [""]
             ):
                 dependency_set.add(req.name)  # type: ignore

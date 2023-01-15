@@ -2,6 +2,7 @@
 import json
 import os
 import shutil
+import subprocess
 import textwrap
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set
@@ -335,6 +336,7 @@ def extract_wheel(
     incremental: bool = False,
     incremental_dir: Path = Path("."),
     annotation: Optional[annotation.Annotation] = None,
+    environment: Optional[Dict[str, str]] = None,
 ) -> Optional[str]:
     """Extracts wheel into given directory and creates py_library and filegroup targets.
 
@@ -347,6 +349,7 @@ def extract_wheel(
             effects the names of libraries and their dependencies, which point to other external repositories.
         incremental_dir: An optional override for the working directory of incremental builds.
         annotation: An optional set of annotations to apply to the BUILD contents of the wheel.
+        environment: An optional environment specification for deducing requirements.
 
     Returns:
         The Bazel label for the extracted wheel, in the form '//path/to/wheel'.
@@ -370,7 +373,7 @@ def extract_wheel(
     # Packages may create dependency cycles when specifying optional-dependencies / 'extras'.
     # Example: github.com/google/etils/blob/a0b71032095db14acf6b33516bca6d885fe09e35/pyproject.toml#L32.
     self_edge_dep = set([whl.name])
-    whl_deps = sorted(whl.dependencies(extras_requested) - self_edge_dep)
+    whl_deps = sorted(whl.dependencies(extras_requested, environment=environment) - self_edge_dep)
 
     if incremental:
         sanitised_dependencies = [
@@ -443,6 +446,14 @@ def extract_wheel(
             additional_content=additional_content,
         )
         build_file.write(contents)
+
+    if annotation and annotation.patches:
+        for patch in annotation.patches:
+            subprocess.run(
+                ['patch', '-p', '1', '-i', patch],
+                cwd=directory,
+                check=True,
+            )
 
     if not incremental:
         os.remove(whl.path)

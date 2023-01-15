@@ -210,7 +210,7 @@ func (c *Config) FindThirdPartyDependency(modName string) (string, bool) {
 				if gazelleManifest.PipRepository != nil && gazelleManifest.PipRepository.Incremental {
 					// @<repository_name>_<distribution_name>//:pkg
 					distributionRepositoryName = distributionRepositoryName + "_" + sanitizedDistribution
-					lbl = label.New(distributionRepositoryName, "", "pkg")
+					lbl = label.New("", "third_party/pip", sanitizedDistribution)
 				} else {
 					// @<repository_name>//pypi__<distribution_name>
 					distributionPackage := "pypi__" + sanitizedDistribution

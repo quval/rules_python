@@ -47,7 +47,7 @@ def pip_install(requirements = None, name = "pip", **kwargs):
     print("pip_install is deprecated. Please switch to pip_parse. pip_install will be removed in a future release.")
     pip_parse(requirements = requirements, name = name, **kwargs)
 
-def pip_parse(requirements = None, requirements_lock = None, name = "pip_parsed_deps", bzlmod = False, **kwargs):
+def pip_parse(requirements = None, requirements_lock = None, name = "pip_parsed_deps", annotations = None, bzlmod = False, **kwargs):
     """Accepts a locked/compiled requirements file and installs the dependencies listed within.
 
     Those dependencies become available in a generated `requirements.bzl` file.
@@ -157,11 +157,18 @@ def pip_parse(requirements = None, requirements_lock = None, name = "pip_parsed_
     # We would prefer everyone move to using requirements_lock, but we maintain a temporary shim.
     reqs_to_use = requirements_lock if requirements_lock else requirements
 
+    patches = {}
+    if annotations:
+        for package in annotations:
+            patches.update({label: label for label in json.decode(annotations[package]).get("patches")})
+
     pip_repository(
         name = name,
         requirements_lock = reqs_to_use,
         repo_prefix = "{}_".format(name),
+        annotations = annotations,
         bzlmod = bzlmod,
+        patches = patches,
         **kwargs
     )
 

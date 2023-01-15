@@ -18,6 +18,7 @@ class Annotation(OrderedDict):
             "copy_files",
             "data",
             "data_exclude_glob",
+            "patches",
             "srcs_exclude_glob",
         ):
             if field not in content:
@@ -56,6 +57,10 @@ class Annotation(OrderedDict):
     @property
     def data_exclude_glob(self) -> List[str]:
         return self["data_exclude_glob"]
+
+    @property
+    def patches(self) -> List[str]:
+        return self["patches"]
 
     @property
     def srcs_exclude_glob(self) -> List[str]:
