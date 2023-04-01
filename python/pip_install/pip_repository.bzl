@@ -18,6 +18,7 @@ load("//python:repositories.bzl", "get_interpreter_dirname", "is_standalone_inte
 load("//python/pip_install:repositories.bzl", "all_requirements")
 load("//python/pip_install:requirements_parser.bzl", parse_requirements = "parse")
 load("//python/pip_install/private:srcs.bzl", "PIP_INSTALL_PY_SRCS")
+load("//python/private:toolchains_repo.bzl", "get_host_os_arch", "get_host_platform")
 
 CPPFLAGS = "CPPFLAGS"
 
@@ -62,6 +63,16 @@ def _get_python_interpreter_attr(rctx):
     else:
         return "python3"
 
+def _resolve_python_interpreter_target(rctx):
+    target = rctx.attr.python_interpreter_target
+    if rctx.attr.platform_to_python_interpreter_target != {}:
+        os, arch = get_host_os_arch(rctx)
+        host_platform_key = get_host_platform(os, arch)
+        if host_platform_key not in rctx.attr.platform_to_python_interpreter_target:
+            fail("Could not determine the interpreter for host platform " + host_platform_key)
+        target = Label(rctx.attr.platform_to_python_interpreter_target[host_platform_key])
+    return target
+
 def _resolve_python_interpreter(rctx):
     """Helper function to find the python interpreter from the common attributes
 
@@ -71,8 +82,8 @@ def _resolve_python_interpreter(rctx):
     """
     python_interpreter = _get_python_interpreter_attr(rctx)
 
-    if rctx.attr.python_interpreter_target != None:
-        target = rctx.attr.python_interpreter_target
+    if _resolve_python_interpreter_target(rctx) != None:
+        target = _resolve_python_interpreter_target(rctx)
         python_interpreter = rctx.path(target)
     elif "/" not in python_interpreter:
         found_python_interpreter = rctx.which(python_interpreter)
@@ -122,11 +133,11 @@ def _get_toolchain_unix_cflags(rctx):
         return []
 
     # Only update the location when using a standalone toolchain.
-    if not is_standalone_interpreter(rctx, rctx.attr.python_interpreter_target):
+    if not is_standalone_interpreter(rctx, _resolve_python_interpreter_target(rctx)):
         return []
 
     er = rctx.execute([
-        rctx.path(rctx.attr.python_interpreter_target).realpath,
+        rctx.path(_resolve_python_interpreter_target(rctx)).realpath,
         "-c",
         "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')",
     ])
@@ -134,7 +145,7 @@ def _get_toolchain_unix_cflags(rctx):
         fail("could not get python version from interpreter (status {}): {}".format(er.return_code, er.stderr))
     _python_version = er.stdout
     include_path = "{}/include/python{}".format(
-        get_interpreter_dirname(rctx, rctx.attr.python_interpreter_target),
+        get_interpreter_dirname(rctx, _resolve_python_interpreter_target(rctx)),
         _python_version,
     )
 
@@ -457,8 +468,8 @@ def _pip_repository_impl(rctx):
         "timeout": rctx.attr.timeout,
     }
 
-    if rctx.attr.python_interpreter_target:
-        config["python_interpreter_target"] = str(rctx.attr.python_interpreter_target)
+    if _resolve_python_interpreter_target(rctx):
+        config["python_interpreter_target"] = str(_resolve_python_interpreter_target(rctx))
 
     if rctx.attr.incompatible_generate_aliases:
         _pkg_aliases(rctx, rctx.attr.name, bzl_packages)
@@ -534,6 +545,19 @@ to control this flag.
     ),
     "pip_data_exclude": attr.string_list(
         doc = "Additional data exclusion parameters to add to the pip packages BUILD file.",
+    ),
+    "platform_to_python_interpreter_target": attr.string_dict(
+        doc = """\
+If you are using several custom python interpreter targets built by other
+repository rules, use this attribute to specify a mapping between platform
+names to the relevant python interpreter target. This allows pip_repository
+to invoke pip using the same interpreter as your toolchain in repositories that
+target multiple platforms. If set, takes precedence over both
+python_interpreter_target and python_interpreter.
+
+Supported platform names are the keys of the `PLATFORMS` dictionary defined in
+`@rules_python//python:versions.bzl`.
+""",
     ),
     "python_interpreter": attr.string(
         doc = """\
